@@ -1,0 +1,13 @@
+{
+  "name": "elfide",
+  "version": "0.1.0",
+  "main": "main.js",
+  "description": "An easy-to-use IDE for 1802-based computers",
+  "license": "GPLv3",
+  "repository": {
+    
+  },
+  "dependencies": {
+    "angular": "^1.6.3"
+  }
+}

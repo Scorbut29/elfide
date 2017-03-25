@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html ng-app="elfide">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="./node_modules/angular/angular.js"></script>
+    <script src="index.js"></script>
+    <title>Elfide</title>
+  </head>
+  <body>
+    <div class="elfide-editor" ng-controller="EditorCtrl">
+      <div class="elfide-line" ng-repeat="line in lines">
+        <div>{{ line.memoryaddress.toString(16) }}</div>
+        <div>{{ line.memoryValue }}</div>
+        <input type="text" ng-model="line.sourceCode" ng-keydown="changed($event, line, lines.indexOf(line))"
+         ng-attr-id="{{ 'elfide-editor-line-source-' + lines.indexOf(line) }}" ng-blur="processLine(lines, line)">
+         <div>{{ line.error }}</div>
+      </div>
+    </div>
+  </body>
+</html>
