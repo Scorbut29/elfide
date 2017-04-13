@@ -13,7 +13,8 @@
         <div>{{ line.memoryaddress.toString(16) }}</div>
         <div>{{ line.memoryValue }}</div>
         <input type="text" ng-model="line.sourceCode" ng-keydown="changed($event, line, lines.indexOf(line))"
-         ng-attr-id="{{ 'elfide-editor-line-source-' + lines.indexOf(line) }}" ng-blur="processLine(lines, line)">
+         ng-attr-id="{{ 'elfide-editor-line-source-' + lines.indexOf(line) }}" ng-blur="processLine(lines, line)"
+         elfide-focus="focusedLine === $index">
          <div>{{ line.error }}</div>
       </div>
     </div>

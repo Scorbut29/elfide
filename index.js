@@ -1,6 +1,19 @@
 angular.module('elfide', [])
 
-.controller('EditorCtrl', function($scope, $window, $timeout) {
+.directive('elfideFocus', ['$timeout', function($timeout) {
+  return {
+    link: (scope, element, attrs) => {      
+      scope.$watch(attrs.elfideFocus, value => {        
+        if (value) {
+          $timeout(() => element[0].focus());          
+        }
+      });
+    }
+  }
+}])
+
+.controller('EditorCtrl', ['$scope', '$timeout', function($scope, $timeout) {
+  $scope.focusedLine = 0;
   const insertLine = (lines, newLine, position) => {
     if (position < 0) {
       lines.push(newLine);
@@ -22,7 +35,7 @@ angular.module('elfide', [])
     'error': ""
   };
 
-  const parseLineSource = (lineSource) => {
+  const parseLineSource = lineSource => {
     const lineStructure = {
       label: "",
       type: "",
@@ -168,33 +181,25 @@ angular.module('elfide', [])
           'memoryaddress': line.memoryaddress,
           'memoryValue': "",
           'length': 0,
-          'sourceCode': ""
+          'sourceCode': "",
+          'error': ""
         });
-        $timeout(() => {
-          const newLine = $window.document.getElementById('elfide-editor-line-source-' + (lineNumber + 1));
-          if (newLine) newLine.focus();
-        });
+        $scope.focusedLine = Math.min($scope.lines.length, $scope.focusedLine + 1);
         break;
       case 'ArrowUp':
         if (lineNumber > 0) {
-          const previousLine = $window.document.getElementById('elfide-editor-line-source-' + (lineNumber - 1));
-          if (previousLine) {
-            previousLine.focus();
-          }
+          $scope.focusedLine = Math.max(0, $scope.focusedLine - 1);
         }
         break;
       case 'ArrowDown':
         if (lineNumber < $scope.lines.length - 1) {
-          const nextLine = $window.document.getElementById('elfide-editor-line-source-' + (lineNumber + 1));
-          if (nextLine) {
-            nextLine.focus();
-          }
+          $scope.focusedLine = Math.min($scope.lines.length, $scope.focusedLine + 1);
         }
         break;
       case "Backspace":
     }
   };
-});
+}]);
 
 arch = {
   "adc": {
