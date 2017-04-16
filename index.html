@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <link rel="stylesheet" type="text/css" href="style.css">
     <script src="./node_modules/angular/angular.js"></script>
+    <script src="1802.js"></script>
     <script src="index.js"></script>
     <title>Elfide</title>
   </head>
   <body>
     <div class="elfide-editor" ng-controller="EditorCtrl">
       <div class="elfide-line" ng-repeat="line in lines">
-        <div>{{ line.memoryaddress.toString(16) }}</div>
-        <div>{{ line.memoryValue }}</div>
+        <div>{{ line.memoryAddress.toString(16) }}</div>
+        <div>{{ line.memoryValue + line.referenceAddress }}</div>
         <input type="text" ng-model="line.sourceCode" ng-keydown="changed($event, line, lines.indexOf(line))"
          ng-attr-id="{{ 'elfide-editor-line-source-' + lines.indexOf(line) }}" ng-blur="processLine(lines, line)"
          elfide-focus="focusedLine === $index">

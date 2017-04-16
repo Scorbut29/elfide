@@ -1,3 +1,266 @@
+const hexify = (value, size) => {
+  if (size <= 0) {
+    return "";
+  }
+
+  let strValue = value.toString(16);
+  let padding = size * 2 - strValue.length;
+
+  if (padding > 0) {
+    strValue = '0'.repeat(padding) + strValue;
+  }
+  if (padding < 0) {
+    strValue = strValue.slice(-padding);
+  }
+
+  return strValue;
+}
+
+const parseLineSource = lineSource => {
+  const lineStructure = {
+    label: "",
+    type: "",
+    value: "",
+    operand: "",
+    comment: "",
+    error: ""
+  };
+
+  const tokens = lineSource.match(/#|:|"|\.\.|\s+|[^\s#":]+/ig);
+  if (tokens === null) {
+    return lineStructure;
+  }
+
+  for (let i = 0 ; i < tokens.length ; i++) {
+    if (tokens[i].search(/\s/) !== -1) continue;
+
+    if (tokens[i].search(/\.\./) !== -1) {
+      if (++i < tokens.length && tokens[i].search(/\s/) !== -1) i++;
+      for (; i < tokens.length ; i++) {
+        lineStructure.comment = lineStructure.comment.concat(tokens[i]);
+      }
+      return lineStructure;
+    }
+
+    switch (tokens[i]) {
+      case ":":
+        lineStructure.error = "Empty label";
+        return lineStructure;
+        break;
+      case "#":
+        if (lineStructure.type !== "") {
+          lineStructure.error = "Data of type " + lineStructure.type + " already defined";
+          return lineStructure;
+        }
+        lineStructure.type = "directValue";
+        i++;
+        if (tokens[i].search(/\s/) !== -1) i++;
+        lineStructure.value = tokens[i];
+        break;
+      case "\"":
+        if (lineStructure.type !== "") {
+          lineStructure.error = "Data of type " + lineStructure.type + " already defined";
+          return lineStructure;
+        }
+        lineStructure.type = "string";
+        i++;
+        for (; i < tokens.length && tokens[i] !== "\"" ; i++) {
+          lineStructure.value = lineStructure.value.concat(tokens[i]);
+        }
+        break;
+      default:
+        if (i + 1 < tokens.length && tokens[i + 1] === ":") {
+          if (lineStructure.label !== "") {
+            lineStructure.error = "Multiple label declaration";
+            return lineStructure;
+          }
+          lineStructure.label = tokens[i++];
+        } else if (i + 2 < tokens.length
+            && tokens[i + 1].search(/\s/) !== -1 && tokens[i + 2] === ":") {
+            if (lineStructure.label !== "") {
+              lineStructure.error = "Multiple label declaration";
+              return lineStructure;
+          }
+          lineStructure.label = tokens[i];
+          i += 2;
+        } else {
+          if (lineStructure.type === "operation") {
+            if (lineStructure.operand !== "") {
+              lineStructure.error = "Multiple operand declaration";
+              return lineStructure;
+            }
+            lineStructure.operand = tokens[i];
+          } else {
+            if (lineStructure.type !== "") {
+              lineStructure.error = "Data of type " + lineStructure.type + " already defined";
+              return lineStructure;
+            }
+            lineStructure.type = "operation";
+            lineStructure.value = tokens[i].toLowerCase();
+          }
+        }b1
+      }
+    }
+
+  return lineStructure;
+}
+
+const expandOperandType = operandType => {
+  switch (operandType) {
+    case '':
+      return '';
+    case 'r':
+      return 'register';
+    case 'a':
+      return 'address (short)';
+    case 'aa':
+      return 'address (long)';
+    case 'p':
+      return 'port';
+    case 'b':
+      return 'immediate';
+    default:
+      return null;
+  }
+}
+
+const hexFromString = (str, enc) => {
+  //TODO enc & caractere spéciaux (\n,...)
+  let hexString = "";
+
+  for (let c of str) {
+    hexString += hexify(c.charCodeAt(), 1);
+  }
+
+  return hexString;
+}
+
+const assemble = (mnemonic, operand) => {
+  const assembled = {
+    code: '',
+    reference: '',
+    shortJump: null,
+    length: null,
+    error: ''
+  };
+
+  if (typeof arch[mnemonic] === 'undefined') {
+    assembled.error = '"' + mnemonic + '" is not a valid mnemonic';
+    return assembled;
+  }
+
+  if (operand === "" && arch[mnemonic].operand !== "") {
+    assembled.error = '"' + mnemonic + '" is expecting an operand of type '
+      + expandOperandType(arch[mnemonic].operand);
+    return assembled;
+  }
+
+  assembled.code = arch[mnemonic].opcode;
+
+  switch (arch[mnemonic].operand) {
+    case '':
+      if (operand !== "") {
+        assembled.error = '"' + mnemonic + '" does not take an operand';
+        return assembled;
+      }
+      assembled.length = 1;
+      break;     
+    case 'b':
+      const immediate = Number(operand);
+      if (isNaN(immediate) || immediate < 0 || immediate > 255) {
+        assembled.error = "Operand must be a number in the range 0-255";
+        return assembled;
+      }
+      assembled.code += hexify(immediate, 1);
+      assembled.length = 2;
+      break;
+    case 'r':
+      const register = Number(operand);
+      if (isNaN(register) || register < 0 || register > 15) {
+        assembled.error = "Operand must be a number in the range 0-15";
+        return assembled;
+      }
+      assembled.code += register.toString(16);
+      assembled.length = 1;
+      break;
+    case 'p':
+      let port = Number(operand);
+      if (isNaN(port) || port < 1 || port > 7) {
+        assembled.error = "Operand must be a number in the range 1-7";
+        return assembled;
+      }
+      if (mnemonic === "inp") {
+        port += 8;
+      }
+      assembled.code += port.toString(16);
+      assembled.length = 1;
+      break;
+    case 'a':
+    case 'aa':
+      assembled.shortJump = arch[mnemonic].operand === 'a';
+      if (operand[0] === '#') {
+        const directAddress = Number(operand.slice(1));
+        if (isNaN(directAddress) || directAddress < 0 || directAddress > 65535) {
+          assembled.error =
+            'Invalid direct address value, must be a number in range 0-65535';
+          return assembled;
+        }
+        assembled.code += hexify(directAddress, assembled.shortJump ? 1 : 2);
+      } else {
+        assembled.reference = operand;
+      }
+      assembled.length = assembled.shortJump ? 2 : 3;
+  }
+
+  return assembled;
+}
+
+const updateAddresses = (lines, modifiedIndex) => {
+  const line = lines[modifiedIndex];
+
+  // New address for the modified line
+  if (modifiedIndex > 0) {
+    line.memoryAddress = lines[modifiedIndex - 1].memoryAddress;
+    line.memoryAddress += lines[modifiedIndex - 1].length;
+  } else {
+    line.memoryAddress = 0;
+  }
+
+  // Update addresses of the subsequent lines
+  for (let i = modifiedIndex + 1 ; i < lines.length ; i++) {
+    lines[i].memoryAddress = lines[i - 1].memoryAddress + lines[i - 1].length;
+  }
+
+  // Update reference for the modified line
+  if (line.reference !== '' && line.reference !== '*') {
+    let found = false;
+    for (let l of lines) {
+      if (l.label === line.reference) {
+        line.referenceAddress = hexify(l.memoryAddress, line.shortReference ? 1 : 2);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      line.error = 'Label "' + line.reference + '" not found';
+    }
+  } else if (line.reference === '*') {
+    line.referenceAddress = hexify(line.memoryAddress, line.shortReference ? 1 : 2);
+  }
+  
+  // Update references of the subsequent lines
+  for (let i = modifiedIndex + 1 ; i < lines.length ; i++) {
+    if (lines[i].label !== '') {
+      for (l of lines) {
+        if (l.reference === lines[i].label) {
+          l.referenceAddress = hexify(lines[i].address, l.shortReference ? 1 : 2);
+        }
+      }
+    }
+  }
+}
+
+
 angular.module('elfide', [])
 
 .directive('elfideFocus', ['$timeout', function($timeout) {
@@ -5,7 +268,7 @@ angular.module('elfide', [])
     link: (scope, element, attrs) => {      
       scope.$watch(attrs.elfideFocus, value => {        
         if (value) {
-          $timeout(() => element[0].focus());          
+          $timeout(() => element[0].focus());
         }
       });
     }
@@ -28,105 +291,25 @@ angular.module('elfide', [])
   };
 
   const blankLine = {
-    'memoryaddress': 0,
-    'memoryValue': "",
-    'sourceCode': "",
+    'memoryAddress': 0,
+    'memoryValue': '',
+    'sourceCode': '',
     'length': 0,
-    'error': ""
+    'error': '',
+    'label': '',
+    'reference': '',
+    'referenceAddress': '',
+    'shortReference': null
   };
 
-  const parseLineSource = lineSource => {
-    const lineStructure = {
-      label: "",
-      type: "",
-      value: "",
-      operand: "",
-      comment: "",
-      error: ""
-    };
-
-    const tokens = lineSource.match(/#|:|"|\.\.|\s+|[^\s#":]+/ig);
-    if (tokens === null) {
-      return lineStructure;
-    }
-
-    for (let i = 0 ; i < tokens.length ; i++) {
-      if (tokens[i].search(/\s/) !== -1) continue;
-
-      if (tokens[i].search(/\.\./) !== -1) {
-        if (++i < tokens.length && tokens[i].search(/\s/) !== -1) i++;
-        for (; i < tokens.length ; i++) {
-          lineStructure.comment = lineStructure.comment.concat(tokens[i]);
-        }
-        return lineStructure;
-      }
-
-      switch (tokens[i]) {
-        case ":":
-          lineStructure.error = "Empty label";
-          return lineStructure;
-          break;
-        case "#":
-          if (lineStructure.type !== "") {
-            lineStructure.error = "Data of type " + lineStructure.type + " already defined";
-            return lineStructure;
-          }
-          lineStructure.type = "directValue";
-          i++;
-          if (tokens[i].search(/\s/) !== -1) i++;
-          lineStructure.value = tokens[i];
-          break;
-        case "\"":
-          if (lineStructure.type !== "") {
-            lineStructure.error = "Data of type " + lineStructure.type + " already defined";
-            return lineStructure;
-          }
-          lineStructure.type = "string";
-          i++;
-          for (; i < tokens.length && tokens[i] !== "\"" ; i++) {
-            lineStructure.value = lineStructure.value.concat(tokens[i]);
-          }
-          break;
-        default:
-          if (i + 1 < tokens.length && tokens[i + 1] === ":") {
-            if (lineStructure.label !== "") {
-              lineStructure.error = "Multiple label declaration";
-              return lineStructure;
-            }
-            lineStructure.label = tokens[i++];
-          } else if (i + 2 < tokens.length
-              && tokens[i + 1].search(/\s/) !== -1 && tokens[i + 2] === ":") {
-              if (lineStructure.label !== "") {
-                lineStructure.error = "Multiple label declaration";
-                return lineStructure;
-            }
-            lineStructure.label = tokens[i];
-            i += 2;
-          } else {
-            if (lineStructure.type === "operation") {
-              if (lineStructure.operand !== "") {
-                lineStructure.error = "Multiple operand declaration";
-                return lineStructure;
-              }
-              lineStructure.operand = tokens[i];
-            } else {
-              if (lineStructure.type !== "") {
-                lineStructure.error = "Data of type " + lineStructure.type + " already defined";
-                return lineStructure;
-              }
-              lineStructure.type = "operation";
-              lineStructure.value = tokens[i];
-            }
-          }
-        }
-      }
-
-    return lineStructure;
-  }
-
   $scope.processLine = (lines, line) => {
-    line.memoryValue = "";
-    line.error = "";
+    line.memoryValue = '';
+    line.length = 0;
+    line.error = '';
+    line.label = '';
+    line.reference = '';
+    line.referenceAddress = '';
+    line.shortReference = null;
     
     const lineStructure = parseLineSource(line.sourceCode);
 
@@ -135,40 +318,53 @@ angular.module('elfide', [])
       return;
     }
 
+    if (lineStructure.label[0] === "*" || lineStructure.label[0] === '#') {
+      line.error = 'A label declaration cannot start with "#" or "*"';
+      return;
+    }
+    if (lineStructure.label !== '') {
+      for (l of lines) {
+        if (l.label === lineStructure.label) {
+          line.error = 'A label with the same name is already defined at line '
+            + (lines.indexOf(l) + 1);
+          return;
+        }
+      }
+    }
+    
+    line.label = lineStructure.label;
+
     switch (lineStructure.type) {
       case "string":
-        let char;
-        for (let i = 0 ; i < lineStructure.value.length ; i++) {
-          line.memoryValue = line.memoryValue.concat(
-            lineStructure.value.charCodeAt(i).toString(16).toUpperCase());
-        }
-        line.length = lineStructure.value.length;
+        line.memoryValue = hexFromString(lineStructure.value);
+        line.length = line.memoryValue.length / 2;
         break;
       case "directValue":
-        if (isNaN(Number(lineStructure.value))) {
-           line.error = "Invalid directValue : not a number";
+        let immediate = Number(lineStructure.value);
+        if (isNaN(immediate)) {
+           line.error = "Invalid directValue: not a number";
            return;
         }
-        line.memoryValue = Number(lineStructure.value).toString(16).toUpperCase();
+        line.memoryValue = immediate.toString(16);
         if (line.memoryValue.length % 2) {
           line.memoryValue = "0" + line.memoryValue;
         }
         line.length = line.memoryValue.length / 2;
         break;
       case "operation":
-      case "":
+        const assembled = assemble(lineStructure.value, lineStructure.operand);
+        if (assembled.error !== '') {
+          line.error = assembled.error;
+          return;
+        }
+        line.memoryValue = assembled.code;
+        line.reference = assembled.reference;
+        line.length = assembled.length;
+        line.shortReference = assembled.shortJump;
     }
 
-    if (lines.indexOf(line) > 0) {
-      line.memoryaddress = lines[lines.indexOf(line) - 1].memoryaddress;
-      line.memoryaddress += lines[lines.indexOf(line) - 1].length;
-    } else {
-      line.memoryaddress = 0;
-    }
-
-    for (let i = lines.indexOf(line) + 1 ; i < lines.length ; i++) {
-      lines[i].memoryaddress = lines[i - 1].memoryaddress + lines[i - 1].length;
-    }
+    line.memoryValue = line.memoryValue.toUpperCase();
+    updateAddresses(lines, lines.indexOf(line));
   }
 
   $scope.lines = [];
@@ -178,11 +374,15 @@ angular.module('elfide', [])
     switch (event.key) {
       case 'Enter':
         $scope.lines.splice(lineNumber + 1, 0, {
-          'memoryaddress': line.memoryaddress,
+          'memoryAddress': line.memoryAddress,
           'memoryValue': "",
           'length': 0,
           'sourceCode': "",
-          'error': ""
+          'error': "",
+          'label': "",
+          'reference': "",
+          'referenceAddress': '',
+          'shortReference': null
         });
         $scope.focusedLine = Math.min($scope.lines.length, $scope.focusedLine + 1);
         break;
@@ -200,481 +400,3 @@ angular.module('elfide', [])
     }
   };
 }]);
-
-arch = {
-  "adc": {
-    "opcode": "74",
-    "operand": "",
-    "cycles": 2,
-    "description": "Add with Carry"
-  },
-  "adci": {
-    "opcode": "7C",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Add with Carry Immediate"
-  },
-  "add": {
-    "opcode": "F4",
-    "operand": "",
-    "cycles": 2,
-    "description": "Add"
-  },
-  "adi": {
-    "opcode": "FC",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Add Immediate"
-  },
-  "and": {
-    "opcode": "F2",
-    "operand": "",
-    "cycles": 2,
-    "description": "Logical AND"
-  },
-  "ani": {
-    "opcode": "FA",
-    "operand": "b",
-    "cycles": 2,
-    "description": "AND Immediate"
-  },
-  "b1": {
-    "opcode": "34",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on External Flag 1"
-  },
-  "b2": {
-    "opcode": "35",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on External Flag 2"
-  },
-  "b3": {
-    "opcode": "36",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on External Flag 3"
-  },
-  "b4": {
-    "opcode": "37",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on External Flag 4"
-  },
-  "bdf": {
-    "opcode": "33",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch if DF is 1"
-  },
-  "bn1": {
-    "opcode": "3C",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on Not External Flag 1"
-  },
-  "bn2": {
-    "opcode": "3D",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on Not External Flag 2"
-  },
-  "bn3": {
-
-    "opcode": "3E",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on Not External Flag 3"
-  },
-  "bn4": {
-    "opcode": "3F",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on Not External Flag 4"
-  },
-  "bnf": {
-    "opcode": "3B",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch if DF is 0"
-  },
-  "bnq": {
-    "opcode": "39",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch if Q is off"
-  },
-  "bnz": {
-    "opcode": "3A",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on Not Zero"
-  },
-  "bq": {
-    "opcode": "31",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch if Q is on"
-  },
-  "br": {
-    "opcode": "30",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch unconditionally"
-  },
-  "bz": {
-    "opcode": "32",
-    "operand": "a",
-    "cycles": 2,
-    "description": "Branch on Zero"
-  },
-  "dec": {// TODO
-    "opcode": "2",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Decrement Register"
-  },
-  "dis": {
-    "opcode": "71",
-    "operand": "",
-    "cycles": 2,
-    "description": "Return and Disable Interrupts"
-  },
-  "ghi": {// TODO
-    "opcode": "9",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Get High byte of Register"
-  },
-  "glo": {// TODO
-    "opcode": "8",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Get Low byte of Register"
-  },
-  "idl": {
-    "opcode": "00",
-    "operand": "",
-    "cycles": 2,
-    "description": "Idle"
-  },
-  "inc": {// TODO
-    "opcode": "1",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Increment Register"
-  },
-  "inp": {// TODO
-    "opcode": "6",
-    "operand": "p",
-    "cycles": 2,
-    "description": "Input to memory and D (for p = 9 to F)"
-  },
-  "irx": {
-    "opcode": "60",
-    "operand": "",
-    "cycles": 2,
-    "description": "Increment R(X)"
-  },
-  "lbdf": {
-    "opcode": "C3",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch if DF is 1"
-  },
-  "lbnf": {
-    "opcode": "CB",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch if DF is 0"
-  },
-  "lbnq": {
-    "opcode": "C9",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch if Q is off"
-  },
-  "lbnz": {
-    "opcode": "CA",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch if Not Zero"
-  },
-  "lbq": {
-    "opcode": "C1",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch if Q is on"
-  },
-  "lbr": {
-    "opcode": "C0",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch unconditionally"
-  },
-  "lbz": {
-    "opcode": "C2",
-    "operand": "aa",
-    "cycles": 3,
-    "description": "Long Branch if Zero"
-  },
-  "lda": {// TODO
-    "opcode": "4",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Load D and Advance"
-  },
-  "ldi": {
-    "opcode": "F8",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Load D Immediate"
-  },
-  "ldn": {// TODO
-    "opcode": "0",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Load D via N (for r = 1 to F)"
-  },
-  "ldx": {
-    "opcode": "F0",
-    "operand": "",
-    "cycles": 2,
-    "description": "Load D via R(X)"
-  },
-  "ldxa": {
-    "opcode": "72",
-    "operand": "",
-    "cycles": 2,
-    "description": "Load D via R(X) and Advance"
-  },
-  "lsdf": {
-    "opcode": "CF",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if DF is 1"
-  },
-  "lsie": {
-    "opcode": "CC",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if Interrupts Enabled"
-  },
-  "lskp": {
-    "opcode": "C8",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip"
-  },
-  "lsnf": {
-    "opcode": "C7",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if DF is 0"
-  },
-  "lsnq": {
-    "opcode": "C5",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if Q is off"
-  },
-  "lsnz": {
-    "opcode": "C6",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if Not Zero"
-  },
-  "lsq": {
-    "opcode": "CD",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if Q is on"
-  },
-  "lsz": {
-    "opcode": "CE",
-    "operand": "",
-    "cycles": 3,
-    "description": "Long Skip if Zero"
-  },
-  "mark": {
-    "opcode": "79",
-    "operand": "",
-    "cycles": 2,
-    "description": "Save X and P in T"
-  },
-  "nop": {
-    "opcode": "C4",
-    "operand": "",
-    "cycles": 3,
-    "description": "No Operation"
-  },
-  "or": {
-    "opcode": "F1",
-    "operand": "",
-    "cycles": 2,
-    "description": "Logical OR"
-  },
-  "ori": {
-    "opcode": "F9",
-    "operand": "b",
-    "cycles": 2,
-    "description": "OR Immediate"
-  },
-  "out": {// TODO
-    "opcode": "6",
-    "operand": "p",
-    "cycles": 2,
-    "description": "Output from memory (for p = 1 to 7)"
-  },
-  "phi": {// TODO
-    "opcode": "B",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Put D in High byte of register"
-  },
-  "plo": {
-    "opcode": "A",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Put D in Low byte of register"
-  },
-  "req": {
-    "opcode": "7A",
-    "operand": "",
-    "cycles": 2,
-    "description": "Reset Q"
-  },
-  "ret": {
-    "opcode": "70",
-    "operand": "",
-    "cycles": 2,
-    "description": "Return"
-  },
-  "sav": {
-    "opcode": "78",
-    "operand": "",
-    "cycles": 2,
-    "description": "Save T"
-  },
-  "sd": {
-    "opcode": "F5",
-    "operand": "",
-    "cycles": 2,
-    "description": "Subtract D from memory"
-  },
-  "sdb": {
-    "opcode": "75",
-    "operand": "",
-    "cycles": 2,
-    "description": "Subtract D from memory with Borrow"
-  },
-  "sdbi": {
-    "opcode": "7D",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Subtract D with Borrow, Immediate"
-  },
-  "sdi": {
-    "opcode": "FD",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Subtract D from memory Immediate byte"
-  },
-  "sep": {// TODO
-    "opcode": "D",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Set P"
-  },
-  "seq": {
-    "opcode": "7B",
-    "operand": "",
-    "cycles": 2,
-    "description": "Set Q"
-  },
-  "sex": {// TODO
-    "opcode": "E",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Set X"
-  },
-  "shl": {
-    "opcode": "FE",
-    "operand": "",
-    "cycles": 2,
-    "description": "Shift D Left"
-  },
-  "shlc": {
-    "opcode": "7E",
-    "operand": "",
-    "cycles": 2,
-    "description": "Shift D Left with Carry"
-  },
-  "shr": {
-    "opcode": "F6",
-    "operand": "",
-    "cycles": 2,
-    "description": "Shift D Right"
-  },
-  "shrc": {
-    "opcode": "76",
-    "operand": "",
-    "cycles": 2,
-    "description": "Shift D Right with Carry"
-  },
-  "skp": {
-    "opcode": "38",
-    "operand": "",
-    "cycles": 2,
-    "description": "Skip one byte"
-  },
-  "sm": {
-    "opcode": "F7",
-    "operand": "",
-    "cycles": 2,
-    "description": "Subtract Memory from D"
-  },
-  "smb": {
-    "opcode": "77",
-    "operand": "",
-    "cycles": 2,
-    "description": "Subtract Memory from D with Borrow"
-  },
-  "smbi": {
-    "opcode": "7F",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Subtract Memory with Borrow, Immediate"
-  },
-  "smi": {
-    "opcode": "FF",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Subtract Memory from D, Immediate"
-  },
-  "str": {// TODO
-    "opcode": "5",
-    "operand": "r",
-    "cycles": 2,
-    "description": "Store D into memory"
-  },
-  "stxd": {
-    "opcode": "73",
-    "operand": "",
-    "cycles": 2,
-    "description": "Store D via R(X) and Decrement"
-  },
-  "xor": {
-    "opcode": "F3",
-    "operand": "",
-    "cycles": 2,
-    "description": "Exclusive OR"
-  },
-  "xri": {
-    "opcode": "FB",
-    "operand": "b",
-    "cycles": 2,
-    "description": "Exclusive OR, Immediate"
-  }
-};
