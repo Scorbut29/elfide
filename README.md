@@ -6,6 +6,15 @@ Elf). This is a very early version so bugs and strange behavior are to
 be expected. Currently, only the editor/assembler part is implemented,
 but more will come.
 
+## Installing
+
+```
+git clone https://github.com/Scorbut29/elfide.git
+cd elfide
+npm install
+npm start
+```
+
 ## Usage
 
 Just type some stuff in the _Source_ column and Elfide will
