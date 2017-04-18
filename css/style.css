@@ -1,0 +1,41 @@
+body, html {
+  height: 100%;
+  margin: 0;
+  padding: 0; }
+
+* {
+  font-family: "Fira Code", monospace; }
+
+.elfide-editor {
+  display: flex;
+  flex-direction: row;
+  padding: 10px; }
+
+.elfide-line-no, .elfide-address, .elfide-value, .elfide-source, .elfide-error {
+  margin-right: 20px;
+  display: flex;
+  flex-direction: column; }
+  .elfide-line-no > *, .elfide-address > *, .elfide-value > *, .elfide-source > *, .elfide-error > * {
+    height: 22px;
+    max-height: 22px;
+    font-size: 20px; }
+  .elfide-line-no > .elfide-header, .elfide-address > .elfide-header, .elfide-value > .elfide-header, .elfide-source > .elfide-header, .elfide-error > .elfide-header {
+    font-variant: small-caps;
+    padding-bottom: 10px; }
+
+.elfide-source {
+  flex: 1; }
+
+.elfide-source > input {
+  border: none;
+  outline: none;
+  padding: 0; }
+
+input.elfide-highlighted {
+  background: whitesmoke; }
+
+.elfide-error > * {
+  flex: 2;
+  font-family: Verdana, sans-serif;
+  font-size: 15px;
+  color: darkred; }
