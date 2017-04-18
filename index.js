@@ -263,6 +263,70 @@ const updateAddresses = (lines, modifiedIndex) => {
   }
 }
 
+const processLine = (lines, line) => {
+  line.memoryValue = '';
+  line.length = 0;
+  line.error = '';
+  line.label = '';
+  line.reference = '';
+  line.referenceAddress = '';
+  line.shortReference = null;
+  
+  const lineStructure = parseLineSource(line.sourceCode);
+
+  if (lineStructure.error !== "") {
+    line.error = lineStructure.error;
+    return;
+  }
+
+  if (lineStructure.label[0] === "*" || lineStructure.label[0] === '#') {
+    line.error = 'A label declaration cannot start with "#" or "*"';
+    return;
+  }
+  if (lineStructure.label !== '') {
+    for (l of lines) {
+      if (l.label === lineStructure.label) {
+        line.error = 'A label with the same name is already defined at line '
+          + (lines.indexOf(l) + 1);
+        return;
+      }
+    }
+  }
+  
+  line.label = lineStructure.label;
+
+  switch (lineStructure.type) {
+    case "string":
+      line.memoryValue = hexFromString(lineStructure.value);
+      line.length = line.memoryValue.length / 2;
+      break;
+    case "directValue":
+      let immediate = Number(lineStructure.value);
+      if (isNaN(immediate)) {
+          line.error = "Invalid directValue: not a number";
+          return;
+      }
+      line.memoryValue = immediate.toString(16);
+      if (line.memoryValue.length % 2) {
+        line.memoryValue = "0" + line.memoryValue;
+      }
+      line.length = line.memoryValue.length / 2;
+      break;
+    case "operation":
+      const assembled = assemble(lineStructure.value, lineStructure.operand);
+      if (assembled.error !== '') {
+        line.error = assembled.error;
+        return;
+      }
+      line.memoryValue = assembled.code;
+      line.reference = assembled.reference;
+      line.length = assembled.length;
+      line.shortReference = assembled.shortJump;
+  }
+
+  updateAddresses(lines, lines.indexOf(line));
+}
+
 
 angular.module('elfide', [])
 
@@ -286,20 +350,7 @@ angular.module('elfide', [])
 
 .controller('EditorCtrl', ['$scope', '$timeout', function($scope, $timeout) {
   $scope.focusedLine = 0;
-  const insertLine = (lines, newLine, position) => {
-    if (position < 0) {
-      lines.push(newLine);
-    }
-    lines.slice(position, 0, newLine);
-  };
-  const removeLine = (lines, newLine, position) => {
-    if (position < 0) {
-      lines.push(newLine);
-    }
-    lines.slice(position, 0, newLine);
-  };
-
-  const blankLine = {
+  $scope.lines = [{
     'memoryAddress': 0,
     'memoryValue': '',
     'sourceCode': '',
@@ -309,78 +360,21 @@ angular.module('elfide', [])
     'reference': '',
     'referenceAddress': '',
     'shortReference': null
-  };
+  }];
+  $scope.processLine = processLine;
 
-  $scope.processLine = (lines, line) => {
-    line.memoryValue = '';
-    line.length = 0;
-    line.error = '';
-    line.label = '';
-    line.reference = '';
-    line.referenceAddress = '';
-    line.shortReference = null;
-    
-    const lineStructure = parseLineSource(line.sourceCode);
-
-    if (lineStructure.error !== "") {
-      line.error = lineStructure.error;
-      return;
-    }
-
-    if (lineStructure.label[0] === "*" || lineStructure.label[0] === '#') {
-      line.error = 'A label declaration cannot start with "#" or "*"';
-      return;
-    }
-    if (lineStructure.label !== '') {
-      for (l of lines) {
-        if (l.label === lineStructure.label) {
-          line.error = 'A label with the same name is already defined at line '
-            + (lines.indexOf(l) + 1);
-          return;
-        }
-      }
-    }
-    
-    line.label = lineStructure.label;
-
-    switch (lineStructure.type) {
-      case "string":
-        line.memoryValue = hexFromString(lineStructure.value);
-        line.length = line.memoryValue.length / 2;
-        break;
-      case "directValue":
-        let immediate = Number(lineStructure.value);
-        if (isNaN(immediate)) {
-           line.error = "Invalid directValue: not a number";
-           return;
-        }
-        line.memoryValue = immediate.toString(16);
-        if (line.memoryValue.length % 2) {
-          line.memoryValue = "0" + line.memoryValue;
-        }
-        line.length = line.memoryValue.length / 2;
-        break;
-      case "operation":
-        const assembled = assemble(lineStructure.value, lineStructure.operand);
-        if (assembled.error !== '') {
-          line.error = assembled.error;
-          return;
-        }
-        line.memoryValue = assembled.code;
-        line.reference = assembled.reference;
-        line.length = assembled.length;
-        line.shortReference = assembled.shortJump;
-    }
-
-    line.memoryValue = line.memoryValue.toUpperCase();
-    updateAddresses(lines, lines.indexOf(line));
+  $scope.clicked = (event, lineNumber) => {
+    $scope.focusedLine = lineNumber;
   }
-
-  $scope.lines = [];
-  insertLine($scope.lines, blankLine, -1);
 
   $scope.changed = (event, line, lineNumber) => {
     switch (event.key) {
+      case 'ArrowDown':
+        $scope.focusedLine = Math.min($scope.lines.length - 1, $scope.focusedLine + 1);
+        break;
+      case 'ArrowUp':
+        $scope.focusedLine = Math.max(0, $scope.focusedLine - 1);
+        break;
       case 'Enter':
         $scope.lines.splice(lineNumber + 1, 0, {
           'memoryAddress': line.memoryAddress,
@@ -393,19 +387,13 @@ angular.module('elfide', [])
           'referenceAddress': '',
           'shortReference': null
         });
-        $scope.focusedLine = Math.min($scope.lines.length, $scope.focusedLine + 1);
-        break;
-      case 'ArrowUp':
-        if (lineNumber > 0) {
-          $scope.focusedLine = Math.max(0, $scope.focusedLine - 1);
-        }
-        break;
-      case 'ArrowDown':
-        if (lineNumber < $scope.lines.length - 1) {
-          $scope.focusedLine = Math.min($scope.lines.length, $scope.focusedLine + 1);
-        }
+        $scope.focusedLine = Math.min($scope.lines.length - 1, $scope.focusedLine + 1);
         break;
       case "Backspace":
+        if (line.sourceCode === '' && $scope.lines.length > 1) {
+          $scope.lines.splice(lineNumber, 1);
+          $scope.focusedLine = Math.max(0, $scope.focusedLine - 1);
+        }
     }
   };
 }]);

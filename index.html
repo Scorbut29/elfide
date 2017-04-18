@@ -18,12 +18,14 @@
 
       <div class="elfide-address">
         <span class="elfide-header">address</span>
-        <span ng-repeat="line in lines">{{ line.memoryAddress | hexify:2 }}</span>
+        <span ng-repeat="line in lines">{{ line.memoryAddress | hexify:2 | uppercase }}</span>
       </div>
 
       <div class="elfide-value">
         <span class="elfide-header">value</span>
-        <span ng-repeat="line in lines">{{ line.memoryValue + line.referenceAddress }}</span>
+        <span ng-repeat="line in lines">
+          {{ line.memoryValue + line.referenceAddress | uppercase }}
+        </span>
       </div>
 
       <div class="elfide-source">
@@ -35,6 +37,7 @@
           elfide-focus="focusedLine === $index" 
           ng-model="line.sourceCode" 
           ng-keydown="changed($event, line, $index)"
+          ng-click="clicked($event, $index)"
           ng-blur="processLine(lines, line)">
       </div>
 
