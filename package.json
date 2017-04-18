@@ -4,10 +4,17 @@
   "main": "main.js",
   "description": "An easy-to-use IDE for 1802-based computers",
   "license": "GPLv3",
-  "repository": {
-    
+  "repository": {},
+  "scripts": {
+    "start": "concurrently \"gulp\" \"electron .\""
   },
   "dependencies": {
     "angular": "^1.6.3"
+  },
+  "devDependencies": {
+    "concurrently": "^3.4.0",
+    "electron": "^1.6.2",
+    "gulp": "^3.9.1",
+    "gulp-sass": "^3.1.0"
   }
 }

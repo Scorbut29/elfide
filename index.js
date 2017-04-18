@@ -98,7 +98,7 @@ const parseLineSource = lineSource => {
             lineStructure.type = "operation";
             lineStructure.value = tokens[i].toLowerCase();
           }
-        }b1
+        }
       }
     }
 
@@ -253,7 +253,7 @@ const updateAddresses = (lines, modifiedIndex) => {
     if (lines[i].label !== '') {
       for (l of lines) {
         if (l.reference === lines[i].label) {
-          l.referenceAddress = hexify(lines[i].address, l.shortReference ? 1 : 2);
+          l.referenceAddress = hexify(lines[i].memoryAddress, l.shortReference ? 1 : 2);
         }
       }
     }
@@ -274,6 +274,12 @@ angular.module('elfide', [])
     }
   }
 }])
+
+.filter('hexify', () => {
+  return (input, size) => {
+    return hexify(input, size);
+  }
+})
 
 .controller('EditorCtrl', ['$scope', '$timeout', function($scope, $timeout) {
   $scope.focusedLine = 0;
