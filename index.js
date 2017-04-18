@@ -250,6 +250,9 @@ const updateAddresses = (lines, modifiedIndex) => {
   
   // Update references of the subsequent lines
   for (let i = modifiedIndex + 1 ; i < lines.length ; i++) {
+    if (lines[i].reference === '*') {
+      lines[i].referenceAddress = hexify(lines[i].memoryAddress, line.shortReference ? 1 : 2);
+    }
     if (lines[i].label !== '') {
       for (l of lines) {
         if (l.reference === lines[i].label) {
